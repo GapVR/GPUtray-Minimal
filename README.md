@@ -16,6 +16,8 @@ A lighter-weight Windows system tray application that monitors GPU performance a
 - **Sleek Popup Tooltip** (Mouseover):
   - Basic readout for 3 key metrics: GPU, VRAM & TEMP
 - Two-click exit button.
+- Supports only one GPU.
+- ~Might crash.~
 
 ## Technologies Used
 
