@@ -9,8 +9,6 @@ set(SOURCES
     src/main.cpp
     src/GpuMonitor.cpp
     src/TrayIcon.cpp
-    src/GraphPopup.cpp
-    src/StartupTask.cpp
     src/resources.rc
     src/GpuTray.manifest
 )
@@ -19,8 +17,6 @@ add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
 # MSVC security hardening and deterministic release builds
 if(MSVC)
-    # Keep the static CRT so the portable executable has no VC runtime dependency.
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     target_compile_options(${PROJECT_NAME} PRIVATE 
         /GS /guard:cf /sdl /ZH:SHA_256 /utf-8
         $<$<CONFIG:Release>:/O2 /GL /Gy /Brepro>
@@ -29,6 +25,12 @@ if(MSVC)
         /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA /GUARD:CF /OPT:REF /OPT:ICF
         $<$<CONFIG:Release>:/LTCG /INCREMENTAL:NO /Brepro>
     )
+endif()
+
+# MinGW-w64: __try/__except supported natively (no extra flag needed)
+# Static link GCC runtime to avoid DLL dependencies on target machines
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++ -static)
 endif()
 
 # Include directory
@@ -48,12 +50,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11.lib
     advapi32.lib
     secur32.lib
-    taskschd.lib
 )
 
 # Release distributors can provide a trusted Authenticode certificate thumbprint
-# without storing certificate material in this repository. build.bat also honors
-# the GPUTRAY_SIGN_CERT_THUMBPRINT environment variable through this cache default.
+# without storing certificate material in this repository.
 set(GPUTRAY_SIGN_CERT_THUMBPRINT "$ENV{GPUTRAY_SIGN_CERT_THUMBPRINT}" CACHE STRING
     "SHA-1 thumbprint of the Authenticode certificate used to sign GpuTray.exe")
 if(MSVC AND GPUTRAY_SIGN_CERT_THUMBPRINT)
