@@ -2,7 +2,7 @@
 #include <windows.h>
 
 // Icon
-IDI_APP_ICON ICON "..\\app.ico"
+IDI_APP_ICON ICON "gpu_icon.ico"
 
 // Version Information
 VS_VERSION_INFO VERSIONINFO
