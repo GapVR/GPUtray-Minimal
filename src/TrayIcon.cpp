@@ -1,13 +1,14 @@
 #include "TrayIcon.h"
 #include <shellapi.h>
 #include <string>
+#include <sstream>
 #include <algorithm>
 
 #pragma comment(lib, "gdiplus.lib")
 
 using namespace Gdiplus;
 
-TrayIcon::TrayIcon(HWND hWnd, GpuMonitor* monitor) : m_hWnd(hWnd), m_monitor(monitor) {
+TrayIcon::TrayIcon(HWND hWnd, GpuMonitor* /*monitor*/) : m_hWnd(hWnd) {
     GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
 }
@@ -52,9 +53,20 @@ bool TrayIcon::RestoreAfterExplorerRestart() {
 }
 
 void TrayIcon::Update(const SystemStats& stats) {
+    ULONGLONG now = GetTickCount64();
+    if (now - m_digitTick >= 2000) {
+        m_digitTick = now;
+        m_digitCycle = (m_digitCycle + 1) % 3;
+    }
+
     HICON hOldIcon = m_nid.hIcon;
     m_nid.hIcon = CreateDynamicIcon(stats);
-    m_nid.uFlags = NIF_ICON;
+
+    wchar_t tip[64];
+    swprintf_s(tip, L"GPU %d%% VRAM %d%% TEMP %dC", (int)stats.gpuUsage, (int)stats.gpuMemoryUsage, (int)stats.gpuTemp);
+    wcscpy_s(m_nid.szTip, tip);
+
+    m_nid.uFlags = NIF_ICON | NIF_TIP;
     Shell_NotifyIcon(NIM_MODIFY, &m_nid);
 
     if (hOldIcon) DestroyIcon(hOldIcon);
@@ -62,57 +74,31 @@ void TrayIcon::Update(const SystemStats& stats) {
 
 HICON TrayIcon::CreateDynamicIcon(const SystemStats& stats) {
     const int size = 16;
+
+    float val = 0;
+    Color c;
+    switch(m_digitCycle) {
+        case 0: val = stats.gpuUsage; c = Color(255, 200, 200, 100); break;
+        case 1: val = stats.gpuMemoryUsage; c = Color(255, 100, 200, 255); break;
+        default: val = stats.gpuTemp; c = Color(255, 255, 100, 50); break;
+    }
+    std::wstring text = std::to_wstring((int)val);
+
     Bitmap bitmap(size, size, PixelFormat32bppARGB);
     Graphics g(&bitmap);
-    
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.Clear(Color(255, 0, 0, 0)); // Black background
 
-    if (!m_activeMetrics.empty()) {
-        int barHeight = size / (int)m_activeMetrics.size();
-        int y = 0;
-        for (const auto& metric : m_activeMetrics) {
-            float val = 0;
-            switch(metric) {
-                case Metric::CPU:      val = stats.cpuUsage; break;
-                case Metric::RAM:      val = stats.memoryUsage; break;
-                case Metric::GPU:      val = stats.gpuUsage; break;
-                case Metric::GPU_MEM:  val = stats.gpuMemoryUsage; break;
-                case Metric::GPU_TEMP: val = stats.gpuTemp; break;
-                case Metric::GPU_12V_CURRENT: val = std::clamp(stats.gpu12VMaxPinCurrent / 12.0f * 100.0f, 0.0f, 100.0f); break;
-                default: break;
-            }
-            DrawGraph(g, val, y, barHeight, GetColorForUsage(val));
-            y += barHeight;
-        }
-    }
+    SolidBrush bg(Color(255, 0, 0, 0)); // Black background
+    g.FillRectangle(&bg, 0, 0, size, size);
+
+    Font font(L"Tahoma", 8, FontStyleRegular);
+    SolidBrush brush(c);
+    StringFormat fmt;
+    fmt.SetAlignment(StringAlignmentCenter);
+    fmt.SetLineAlignment(StringAlignmentCenter);
+    g.DrawString(text.c_str(), -1, &font,
+        RectF(0, 0, size, size), &fmt, &brush);
 
     HICON hIcon;
     bitmap.GetHICON(&hIcon);
     return hIcon;
-}
-
-void TrayIcon::DrawGraph(Graphics& g, float value, int yOffset, int height, Color color) {
-    // Background bar for better contrast
-    SolidBrush bgBrush(Color(255, 60, 60, 60));
-    g.FillRectangle(&bgBrush, 0, yOffset, 16, height);
-
-    if (value <= 0.1f) return; // No colored fill for 0 or near 0
-
-    int barWidth = (int)(std::clamp(value, 0.0f, 100.0f) * 16.0f / 100.0f);
-    if (barWidth < 1 && value > 0.5f) barWidth = 1;
-
-    SolidBrush brush(color);
-    g.FillRectangle(&brush, 0, yOffset, barWidth, height);
-}
-
-Color TrayIcon::GetColorForUsage(float usage) {
-    if (usage < 50.0f) return Color(255, 0, 255, 0); // Green
-    if (usage < 80.0f) return Color(255, 255, 255, 0); // Yellow
-    return Color(255, 255, 0, 0); // Red
-}
-
-void TrayIcon::ShowContextMenu() {
-    // This will be called on right-click. 
-    // We'll show our custom GraphPopup window here.
 }
